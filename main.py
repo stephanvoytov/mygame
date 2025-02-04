@@ -1,24 +1,53 @@
 import os
 import random
 import sys
-
 import pygame
 
-white = (255, 255, 255)
-black = (0, 0, 0)
-size = width, height = 1000, 700
+# Константы
+WHITE = (255, 255, 255)
+BLACK = (0, 0, 0)
+GRAY = (200, 200, 200)
+SIZE = WIDTH, HEIGHT = 1000, 700
 FPS = 24
+DATA_PATH = "data"
+background_music = 'pop_liluzivert.mp3'
+
+BUTTON_WIDTH, BUTTON_HEIGHT = 300, 60
+BUTTON_MARGIN = 20
+FONT_SIZE = 60
 
 pygame.init()
-screen = pygame.display.set_mode(size)
+pygame.mixer.init()
+pygame.mixer.music.load(background_music)
+screen = pygame.display.set_mode(SIZE)
 clock = pygame.time.Clock()
+font = pygame.font.Font(None, 60)
+records_file = "records.txt"
+pygame.mixer.music.load(background_music)
+pygame.mixer.music.set_volume(0.05)
+pygame.mixer.music.play(-1)
+
+
+def load_recods():
+    if os.path.exists(records_file):
+        with open(records_file, 'r') as file:
+            records = file.readline().split()
+            file.close()
+            return records
+    return []
+
+
+def save_record(record):
+    with open(records_file, 'a') as file:
+        file.write(f' {record}')
+        file.close()
 
 
 def load_image(name, colorkey=None):
-    fullname = os.path.join('data', name)
+    fullname = os.path.join(DATA_PATH, name)
     if not os.path.isfile(fullname):
         print(f"Файл с изображением '{fullname}' не найден")
-        sys.exit()
+        return pygame.Surface((50, 50))
     image = pygame.image.load(fullname)
 
     if colorkey is not None:
@@ -32,21 +61,18 @@ def load_image(name, colorkey=None):
 
 
 class Ship(pygame.sprite.Sprite):
-    ship_size = 65, 100
-    image = load_image("ship1.png", -1)
-    image = pygame.transform.rotate(image, -90)
-    image1 = load_image("ship.png", -1)
-    image1 = pygame.transform.rotate(image1, -90)
-    image2 = load_image("ship2.png", -1)
-    image2 = pygame.transform.rotate(image2, -90)
-    images = [image, image1, image2]
+    SHIP_SIZE = 65, 100
+    IMAGES = [
+        pygame.transform.rotate(load_image(f"ship{i}.png", -1), -90)
+        for i in range(3)
+    ]
 
     def __init__(self, *group):
         super().__init__(*group)
-        self.image = Ship.image
+        self.image = Ship.IMAGES[0]
         self.rect = self.image.get_rect()
-        self.rect.x = width // 10
-        self.rect.y = height // 2 - Ship.ship_size[0] // 2
+        self.rect.x = WIDTH // 10
+        self.rect.y = HEIGHT // 2 - Ship.SHIP_SIZE[0] // 2
         self.speed = 10
         self.cur_frame = 0
         self.count = 0
@@ -54,61 +80,71 @@ class Ship(pygame.sprite.Sprite):
     def update(self, *args):
         self.count += 1
         if self.count > 4:
-            self.cur_frame = (self.cur_frame + 1) % 3
-            self.image = Ship.images[self.cur_frame]
+            self.cur_frame = (self.cur_frame + 1) % len(Ship.IMAGES)
+            self.image = Ship.IMAGES[self.cur_frame]
             self.count = 0
 
     def move(self, direction):
-        c = self.speed * direction
-        y = self.rect.y
-        if not ((y <= 0 and direction < 0) or (y >= height - Ship.ship_size[0] and direction > 0)):
-            self.rect.y += c
+        y_offset = self.speed * direction
+        if 0 <= self.rect.y + y_offset <= HEIGHT - Ship.SHIP_SIZE[0]:
+            self.rect.y += y_offset
 
 
 class Asteroid(pygame.sprite.Sprite):
-    image = load_image("asteroid.png", -1)
-    a_size = a_width, a_height = 100, 100
-    image = pygame.transform.scale(image, a_size)
+    IMAGE = pygame.transform.scale(load_image("asteroid.png", -1), (150, 150))
+    all_asteroids = []
 
     def __init__(self, *group):
         super().__init__(*group)
-        self.image = Asteroid.image
+        self.image = Asteroid.IMAGE
         self.rect = self.image.get_rect()
-
-        self.rect.x = random.randrange(width, 2 * width)
-        self.rect.y = random.randrange(0, height - Asteroid.a_height)
         self.speed = random.randrange(5, 10)
         self.mask = pygame.mask.from_surface(self.image)
 
+        while True:
+            self.rect.x = random.randrange(WIDTH, 2 * WIDTH)
+            self.rect.y = random.randrange(0, HEIGHT - self.rect.height)
+            if not any(self.rect.colliderect(asteroid.rect) for asteroid in Asteroid.all_asteroids):
+                break
+
+        Asteroid.all_asteroids.append(self)
+
     def update(self, *args):
-        if self.rect.x <= -50:
-            self.rect.x = random.randrange(width, 2 * width)
-        self.rect = self.rect.move(-self.speed, 0)
+        self.rect.x -= self.speed
+        if self.rect.x <= -self.rect.width:
+            self.respawn()
+
+    def respawn(self):
+        while True:
+            self.rect.x = random.randrange(WIDTH, 2 * WIDTH)
+            self.rect.y = random.randrange(0, HEIGHT - self.rect.height)
+            if not any(self.rect.colliderect(asteroid.rect) for asteroid in Asteroid.all_asteroids if asteroid != self):
+                break
 
 
 class Star(pygame.sprite.Sprite):
-    image = load_image("star.png", -1)
-    a_size = a_width, a_height = 50, 50
-    image = pygame.transform.scale(image, a_size)
+    IMAGE = pygame.transform.scale(load_image("star.png", -1), (50, 47))
 
     def __init__(self, *group):
         super().__init__(*group)
-        self.image = Star.image
+        self.image = Star.IMAGE
         self.rect = self.image.get_rect()
-
-        self.rect.x = random.randrange(width, 2 * width)
-        self.rect.y = random.randrange(Star.a_height, height - Star.a_height)
+        self.rect.x = random.randrange(WIDTH, 2 * WIDTH)
+        self.rect.y = random.randrange(self.rect.height, HEIGHT - self.rect.height)
         self.speed = 10
         self.mask = pygame.mask.from_surface(self.image)
 
     def update(self, *args):
-        if self.rect.x <= -50:
-            self.rect.x = random.randrange(width, 2 * width)
-        self.rect = self.rect.move(-self.speed, 0)
+        self.rect.x -= self.speed
+        if self.rect.x <= -self.rect.width:
+            self.respawn()
 
     def on_collect(self):
-        self.rect.x = random.randrange(width, 2 * width)
-        self.rect.y = random.randrange(Star.a_height, height - Star.a_height)
+        self.respawn()
+
+    def respawn(self):
+        self.rect.x = random.randrange(WIDTH, 2 * WIDTH)
+        self.rect.y = random.randrange(self.rect.height, HEIGHT - self.rect.height)
 
 
 def terminate():
@@ -116,33 +152,67 @@ def terminate():
     sys.exit()
 
 
-def start_menu():
-    options = menu_options
-    pygame.init()
-    WHITE = (255, 255, 255)
-    BLACK = (0, 0, 0)
-    GRAY = (200, 200, 200)
+def draw_button(rect, text, color, text_color):
+    pygame.draw.rect(screen, color, rect, border_radius=10)
+    text_surface = font.render(text, True, text_color)
+    text_rect = text_surface.get_rect(center=rect.center)
+    screen.blit(text_surface, text_rect)
 
-    font = pygame.font.Font(None, 60)
 
-    screen_width, screen_height = screen.get_size()
-
+def leaderboard():
     button_width, button_height = 300, 60
-
     running = True
     while running:
         screen.fill(WHITE)
-
         mouse_pos = pygame.mouse.get_pos()
         mouse_click = pygame.mouse.get_pressed()
 
-        for index, (text, action) in enumerate(options):
-            button_x = (screen_width - button_width) // 2
+        button_x = WIDTH - button_width - 10
+        button_y = 10
+        button_rect = pygame.Rect(button_x, button_y, button_width, button_height)
+
+        color = GRAY if button_rect.collidepoint(mouse_pos) else BLACK
+        pygame.draw.rect(screen, color, button_rect, border_radius=10)
+
+        text_surface = font.render('Main menu', True, WHITE)
+        text_rect = text_surface.get_rect(center=button_rect.center)
+        screen.blit(text_surface, text_rect)
+        records = load_recods()
+        records = set(map(int, records))
+        records = sorted(list(records), reverse=True)[:10]
+        for i, score in enumerate(records):
+            text = font.render(f"{i + 1}. {score}", True, BLACK)
+            screen.blit(text, (50, 50 + i * 40))
+
+        if button_rect.collidepoint(mouse_pos) and mouse_click[0]:
+            start_menu()
+
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                terminate()
+
+        pygame.display.flip()
+
+
+def start_menu():
+    menu_options = [
+        ("Start game", game),
+        ("Leaderboard", leaderboard),
+        ("Quit", terminate)
+    ]
+    button_width, button_height = 300, 60
+    running = True
+    while running:
+        screen.fill(WHITE)
+        mouse_pos = pygame.mouse.get_pos()
+        mouse_click = pygame.mouse.get_pressed()
+
+        for index, (text, action) in enumerate(menu_options):
+            button_x = (WIDTH - button_width) // 2
             button_y = 200 + index * (button_height + 20)
             button_rect = pygame.Rect(button_x, button_y, button_width, button_height)
 
             color = GRAY if button_rect.collidepoint(mouse_pos) else BLACK
-
             pygame.draw.rect(screen, color, button_rect, border_radius=10)
 
             text_surface = font.render(text, True, WHITE)
@@ -154,59 +224,94 @@ def start_menu():
 
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
-                pygame.quit()
-                sys.exit()
+                terminate()
 
         pygame.display.flip()
 
 
-def main():
+def lose(score):
+    options = [
+        ("Play Again", lambda: None),
+        ("Main menu", start_menu),
+        ("Quit", terminate)
+    ]
+
+    paused = True
+    while paused:
+        screen.fill(WHITE)
+        mouse_pos = pygame.mouse.get_pos()
+        mouse_click = pygame.mouse.get_pressed()
+        text = font.render(f"Your score: {score}", True, BLACK)
+        screen.blit(text, ((WIDTH - text.get_width()) // 2, 100))
+        for index, (text, action) in enumerate(options):
+            button_x = (WIDTH - BUTTON_WIDTH) // 2
+            button_y = 200 + index * (BUTTON_HEIGHT + BUTTON_MARGIN)
+            button_rect = pygame.Rect(button_x, button_y, BUTTON_WIDTH, BUTTON_HEIGHT)
+
+            color = GRAY if button_rect.collidepoint(mouse_pos) else BLACK
+            draw_button(button_rect, text, color, WHITE)
+
+            if button_rect.collidepoint(mouse_pos) and mouse_click[0]:
+                if text == "Resume":
+                    paused = False
+                else:
+                    action()
+
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                terminate()
+
+        pygame.display.flip()
+
+
+def game():
     all_sprites = pygame.sprite.Group()
     asteroids_group = pygame.sprite.Group()
     ship = Ship(all_sprites)
-    asteroids = []
-    for _ in range(10):
-        asteroids.append(Asteroid([all_sprites, asteroids_group]))
+    for _ in range(7):
+        Asteroid(all_sprites, asteroids_group)
     star = Star(all_sprites)
 
     TIMER_EVENT = pygame.USEREVENT + 1
-    pygame.time.set_timer(TIMER_EVENT, 500)
+    pygame.time.set_timer(TIMER_EVENT, 1000)
 
-    running = True
-    background = pygame.transform.scale(load_image('background.jpg'), (width, height))
+    background = pygame.transform.scale(load_image('background.jpg'), (WIDTH, HEIGHT))
     score = 0
+    running = True
+    pause_rect = pygame.Rect(WIDTH - 160, 10, 150, 40)
 
     while running:
-        screen.fill(black)
         screen.blit(background, (0, 0))
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
+            if event.type == pygame.MOUSEBUTTONDOWN and pause_rect.collidepoint(event.pos):
+                pause_menu()
             if event.type == TIMER_EVENT:
-                score += 1
-        keys = pygame.key.get_pressed()
+                score += 10
 
+        keys = pygame.key.get_pressed()
         if keys[pygame.K_DOWN]:
             ship.move(1)
         if keys[pygame.K_UP]:
             ship.move(-1)
-        if keys[pygame.K_p]:
-            pause_menu()
 
-        for asteroid in asteroids:
+        for asteroid in asteroids_group:
             if pygame.sprite.collide_mask(asteroid, ship):
-                start_menu(menu_options)
+                if score > 0:
+                    save_record(score)
+                lose(score)
 
         if pygame.sprite.collide_mask(star, ship):
             score += 100
             star.on_collect()
 
-        all_sprites.draw(screen)
         all_sprites.update()
+        all_sprites.draw(screen)
 
-        font = pygame.font.Font(None, 36)
-        text = font.render(f"Score: {score}", True, white)
-        screen.blit(text, (10, 10))
+        score_text = font.render(f"Score: {score}", True, WHITE)
+        screen.blit(score_text, (10, 10))
+        draw_button(pause_rect, "Pause", WHITE, BLACK)
 
         pygame.display.flip()
         clock.tick(FPS)
@@ -215,18 +320,11 @@ def main():
 
 
 def pause_menu():
-    pygame.init()
-    font = pygame.font.Font(None, 60)
-
-    WHITE = (255, 255, 255)
-    BLACK = (0, 0, 0)
-
-    resume_text = font.render('Resume', True, WHITE)
-    quit_text = font.render('Quit', True, WHITE)
-    menu_text = font.render('Menu', True, WHITE)
-
-    screen_width, screen_height = screen.get_size()
-    button_width, button_height = 300, 60
+    options = [
+        ("Resume", lambda: None),
+        ("Main menu", start_menu),
+        ("Quit", terminate)
+    ]
 
     paused = True
     while paused:
@@ -234,47 +332,26 @@ def pause_menu():
         mouse_pos = pygame.mouse.get_pos()
         mouse_click = pygame.mouse.get_pressed()
 
-        resume_button = pygame.Rect((screen_width - button_width) // 2, 100, button_width, button_height)
-        menu_button = pygame.Rect((screen_width - button_width) // 2, 200, button_width, button_height)
-        quit_button = pygame.Rect((screen_width - button_width) // 2, 300, button_width, button_height)
+        for index, (text, action) in enumerate(options):
+            button_x = (WIDTH - BUTTON_WIDTH) // 2
+            button_y = 200 + index * (BUTTON_HEIGHT + BUTTON_MARGIN)
+            button_rect = pygame.Rect(button_x, button_y, BUTTON_WIDTH, BUTTON_HEIGHT)
 
-        pygame.draw.rect(screen, BLACK, resume_button, border_radius=10)
-        pygame.draw.rect(screen, BLACK, menu_button, border_radius=10)
-        pygame.draw.rect(screen, BLACK, quit_button, border_radius=10)
+            color = GRAY if button_rect.collidepoint(mouse_pos) else BLACK
+            draw_button(button_rect, text, color, WHITE)
 
-        screen.blit(resume_text, resume_text.get_rect(center=resume_button.center))
-        screen.blit(menu_text, menu_text.get_rect(center=menu_button.center))
-        screen.blit(quit_text, quit_text.get_rect(center=quit_button.center))
+            if button_rect.collidepoint(mouse_pos) and mouse_click[0]:
+                if text == "Resume":
+                    paused = False
+                else:
+                    action()
 
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
-                pygame.quit()
-                sys.exit()
-
-        if resume_button.collidepoint(mouse_pos) and mouse_click[0]:
-            paused = False
-        if quit_button.collidepoint(mouse_pos) and mouse_click[0]:
-            pygame.quit()
-            sys.exit()
-        if menu_button.collidepoint(mouse_pos) and mouse_click[0]:
-            start_menu()
+                terminate()
 
         pygame.display.flip()
 
-
-def leaderboard():
-    print('leaderboard')
-
-
-def settings():
-    print('settings')
-
-
-menu_options = [
-    ("Start Game", main),
-    ("Leaderboard", leaderboard),
-    ("Quit", terminate)
-]
 
 if __name__ == '__main__':
     start_menu()

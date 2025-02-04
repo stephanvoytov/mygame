@@ -1,5 +1,24 @@
+import os
+
 import pygame
 import sys
+
+
+records_file = 'records.txt'
+def load_recods():
+    if os.path.exists(records_file):
+        with open(records_file, 'r') as file:
+            records = file.readline().split()
+            file.close()
+            return records
+    return []
+
+
+def save_record(record):
+    with open(records_file, 'w') as file:
+        file.write(f', {record}')
+        file.close()
+
 
 def start_menu(screen, options):
     pygame.init()
@@ -43,16 +62,20 @@ def start_menu(screen, options):
 
         pygame.display.flip()
 
+
 if __name__ == "__main__":
     def start_game():
         print("Начало игры!")
 
+
     def open_settings():
         print("Настройки")
+
 
     def quit_game():
         pygame.quit()
         sys.exit()
+
 
     pygame.init()
     screen = pygame.display.set_mode((800, 600))
