@@ -18,14 +18,17 @@ FONT_SIZE = 60
 
 pygame.init()
 pygame.mixer.init()
-pygame.mixer.music.load(background_music)
 screen = pygame.display.set_mode(SIZE)
 clock = pygame.time.Clock()
 font = pygame.font.Font(None, 60)
 records_file = "records.txt"
-pygame.mixer.music.load(background_music)
-pygame.mixer.music.set_volume(0.05)
-pygame.mixer.music.play(-1)
+try:
+    if os.path.exists(background_music):
+        pygame.mixer.music.load(background_music)
+        pygame.mixer.music.set_volume(0.05)
+        pygame.mixer.music.play(-1)
+except pygame.error:
+    print("Music file not found, continuing without music")
 
 
 def load_recods():
